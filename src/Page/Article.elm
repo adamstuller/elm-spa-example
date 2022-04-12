@@ -1,9 +1,10 @@
-module Page.Article exposing (Model, Msg, init, subscriptions, toSession, update, view)
+module Page.Article exposing (initPageWidget, parser)
 
 {-| Viewing an individual article.
 -}
 
-import Api exposing (Cred)
+import Alt exposing (Flags, PageWidget, Params, RouteParser)
+import Api exposing (Cred, storageDecoder)
 import Api.Endpoint as Endpoint
 import Article exposing (Article, Full, Preview)
 import Article.Body exposing (Body)
@@ -18,6 +19,7 @@ import Html.Attributes exposing (attribute, class, disabled, href, id, placehold
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Http
 import Json.Decode as Decode
+import List exposing (singleton)
 import Loading
 import Log
 import Page
@@ -27,8 +29,23 @@ import Session exposing (Session)
 import Task exposing (Task)
 import Time
 import Timestamp
+import Url.Parser exposing ((</>), Parser, string)
 import Username exposing (Username)
 import Viewer exposing (Viewer)
+
+
+
+-- Parser
+
+
+parser : Parser (List String -> List String) (List String)
+parser =
+    Url.Parser.map singleton (Url.Parser.s "article" </> string)
+
+
+urlParamsToSlug : List String -> Slug
+urlParamsToSlug params =
+    Slug.Slug <| Maybe.withDefault "DEFAULT_SLUG" (List.head params)
 
 
 
@@ -58,11 +75,22 @@ type CommentText
     | Sending String
 
 
-init : Session -> Slug -> ( Model, Cmd Msg )
-init session slug =
+init : Params -> ( Model, Cmd Msg )
+init params =
     let
+        maybeViewer =
+            Decode.decodeValue Decode.string params.flags
+                |> Result.andThen (Decode.decodeString (storageDecoder Viewer.decoder))
+                |> Result.toMaybe
+
+        session =
+            Session.fromViewer params.key maybeViewer
+
         maybeCred =
             Session.cred session
+
+        slug =
+            urlParamsToSlug <| params.urlParams
     in
     ( { session = session
       , timeZone = Time.utc
@@ -85,7 +113,7 @@ init session slug =
 -- VIEW
 
 
-view : Model -> { title : String, content : Html Msg }
+view : Model -> Html Msg
 view model =
     case model.article of
         Loaded article ->
@@ -107,82 +135,79 @@ view model =
 
                 buttons =
                     case Session.cred model.session of
-                        Just cred ->
+                        Just cred -> 
                             viewButtons cred article author
 
                         Nothing ->
                             []
             in
-            { title = title
-            , content =
-                div [ class "article-page" ]
-                    [ div [ class "banner" ]
-                        [ div [ class "container" ]
-                            [ h1 [] [ text title ]
-                            , div [ class "article-meta" ] <|
-                                List.append
-                                    [ a [ Route.href (Route.Profile (Author.username author)) ]
-                                        [ img [ Avatar.src (Profile.avatar profile) ] [] ]
-                                    , div [ class "info" ]
-                                        [ Author.view (Author.username author)
-                                        , Timestamp.view model.timeZone (Article.metadata article).createdAt
-                                        ]
+            div [ class "article-page" ]
+                [ div [ class "banner" ]
+                    [ div [ class "container" ]
+                        [ h1 [] [ text title ]
+                        , div [ class "article-meta" ] <|
+                            List.append
+                                [ a [ Route.href (Route.Profile (Author.username author)) ]
+                                    [ img [ Avatar.src (Profile.avatar profile) ] [] ]
+                                , div [ class "info" ]
+                                    [ Author.view (Author.username author)
+                                    , Timestamp.view model.timeZone (Article.metadata article).createdAt
                                     ]
-                                    buttons
-                            , Page.viewErrors ClickedDismissErrors model.errors
-                            ]
-                        ]
-                    , div [ class "container page" ]
-                        [ div [ class "row article-content" ]
-                            [ div [ class "col-md-12" ]
-                                [ Article.Body.toHtml (Article.body article) [] ]
-                            ]
-                        , hr [] []
-                        , div [ class "article-actions" ]
-                            [ div [ class "article-meta" ] <|
-                                List.append
-                                    [ a [ Route.href (Route.Profile (Author.username author)) ]
-                                        [ img [ Avatar.src avatar ] [] ]
-                                    , div [ class "info" ]
-                                        [ Author.view (Author.username author)
-                                        , Timestamp.view model.timeZone (Article.metadata article).createdAt
-                                        ]
-                                    ]
-                                    buttons
-                            ]
-                        , div [ class "row" ]
-                            [ div [ class "col-xs-12 col-md-8 offset-md-2" ] <|
-                                -- Don't render the comments until the article has loaded!
-                                case model.comments of
-                                    Loading ->
-                                        []
-
-                                    LoadingSlowly ->
-                                        [ Loading.icon ]
-
-                                    Loaded ( commentText, comments ) ->
-                                        -- Don't let users add comments until they can
-                                        -- see the existing comments! Otherwise you
-                                        -- may be about to repeat something that's
-                                        -- already been said.
-                                        viewAddComment slug commentText (Session.viewer model.session)
-                                            :: List.map (viewComment model.timeZone slug) comments
-
-                                    Failed ->
-                                        [ Loading.error "comments" ]
-                            ]
+                                ]
+                                buttons
+                        , Page.viewErrors ClickedDismissErrors model.errors
                         ]
                     ]
-            }
+                , div [ class "container page" ]
+                    [ div [ class "row article-content" ]
+                        [ div [ class "col-md-12" ]
+                            [ Article.Body.toHtml (Article.body article) [] ]
+                        ]
+                    , hr [] []
+                    , div [ class "article-actions" ]
+                        [ div [ class "article-meta" ] <|
+                            List.append
+                                [ a [ Route.href (Route.Profile (Author.username author)) ]
+                                    [ img [ Avatar.src avatar ] [] ]
+                                , div [ class "info" ]
+                                    [ Author.view (Author.username author)
+                                    , Timestamp.view model.timeZone (Article.metadata article).createdAt
+                                    ]
+                                ]
+                                buttons
+                        ]
+                    , div [ class "row" ]
+                        [ div [ class "col-xs-12 col-md-8 offset-md-2" ] <|
+                            -- Don't render the comments until the article has loaded!
+                            case model.comments of
+                                Loading ->
+                                    []
+
+                                LoadingSlowly ->
+                                    [ Loading.icon ]
+
+                                Loaded ( commentText, comments ) ->
+                                    -- Don't let users add comments until they can
+                                    -- see the existing comments! Otherwise you
+                                    -- may be about to repeat something that's
+                                    -- already been said.
+                                    viewAddComment slug commentText (Session.viewer model.session)
+                                        :: List.map (viewComment model.timeZone slug) comments
+
+                                Failed ->
+                                    [ Loading.error "comments" ]
+                        ]
+                    ]
+                ]
 
         Loading ->
-            { title = "Article", content = text "" }
+            text ""
 
         LoadingSlowly ->
-            { title = "Article", content = Loading.icon }
+            Loading.icon
 
         Failed ->
-            { title = "Article", content = Loading.error "article" }
+            Loading.error "article"
 
 
 viewAddComment : Slug -> CommentText -> Maybe Viewer -> Html Msg
@@ -584,3 +609,12 @@ editButton : Article a -> Html Msg
 editButton article =
     a [ class "btn btn-outline-secondary btn-sm", Route.href (Route.EditArticle (Article.slug article)) ]
         [ i [ class "ion-edit" ] [], text " Edit Article" ]
+
+
+initPageWidget : RouteParser -> PageWidget Model Msg Params
+initPageWidget p =
+    { init = ( init, p )
+    , update = update
+    , view = view
+    , subscriptions = subscriptions
+    }
