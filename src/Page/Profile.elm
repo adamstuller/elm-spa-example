@@ -36,7 +36,7 @@ import Viewer exposing (Viewer)
 
 parser : Parser (List String -> List String) (List String)
 parser =
-    Url.Parser.map singleton (Url.Parser.s "article" </> string)
+    Url.Parser.map singleton (Url.Parser.s "profile" </> string)
 
 
 urlParamsToUsername : List String -> Username
