@@ -1,4 +1,4 @@
-module Article.Slug exposing (Slug, decoder, toString, urlParser)
+module Article.Slug exposing (Slug(..), decoder, toString, urlParser)
 
 import Json.Decode as Decode exposing (Decoder)
 import Url.Parser exposing (Parser)

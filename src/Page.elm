@@ -1,9 +1,10 @@
-module Page exposing (Page(..), view, viewErrors)
+module Page exposing (Page(..), view, viewErrors, viewNavbar)
 
+import Alt exposing (Navbar)
 import Api exposing (Cred)
 import Avatar
 import Browser exposing (Document)
-import Html exposing (Html, a, button, div, footer, i, img, li, nav, p, span, text, ul)
+import Html exposing (Attribute, Html, a, button, div, footer, i, img, li, nav, p, span, text, ul)
 import Html.Attributes exposing (class, classList, href, style)
 import Html.Events exposing (onClick)
 import Profile
@@ -88,6 +89,37 @@ viewMenu page maybeViewer =
             [ linkTo Route.Login [ text "Sign in" ]
             , linkTo Route.Register [ text "Sign up" ]
             ]
+
+
+viewNavbar : Navbar msg
+viewNavbar state onNavbarExpandClicked url =
+    let
+        link route linkContent =
+            li [ classList [ ( "nav-item", True ) ] ]
+                [ a [ class "nav-link", Route.href route ] linkContent ]
+    in
+    nav [ class "navbar navbar-light" ]
+        [ div [ class "container" ]
+            [ a [ class "navbar-brand", href "/" ]
+                [ text "conduit" ]
+            , ul [ class "nav navbar-nav pull-xs-right" ] <|
+                [ link Route.Login [ text "Sign in" ]
+                , link Route.Register
+                    [ text "Sign up" ]
+                , link
+                    Route.NewArticle
+                    [ i [ class "ion-compose" ] [], text "\u{00A0}New Post" ]
+                , link Route.Settings [ i [ class "ion-gear-a" ] [], text "\u{00A0}Settings" ]
+
+                --    , link
+                --         (Route.Profile username)
+                --         [ img [ class "user-pic", Avatar.src avatar ] []
+                --         , Username.toHtml username
+                -- ]
+                , link Route.Logout [ text "Sign out" ]
+                ]
+            ]
+        ]
 
 
 viewFooter : Html msg

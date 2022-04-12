@@ -1,10 +1,18 @@
-module Page.Blank exposing (view)
+module Page.Blank exposing (initPageWidget)
 
+import Alt exposing (PageWidget, Params, RouteParser)
 import Html exposing (Html)
 
 
-view : { title : String, content : Html msg }
+view : Html msg
 view =
-    { title = ""
-    , content = Html.text ""
+    Html.text ""
+
+
+initPageWidget : RouteParser -> PageWidget () () Params
+initPageWidget p =
+    { init = ( always ( (), Cmd.none ), p )
+    , view = always view
+    , update = (always << always) ( (), Cmd.none )
+    , subscriptions = always Sub.none
     }

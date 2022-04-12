@@ -1,6 +1,7 @@
-module Page.Settings exposing (Model, Msg, init, subscriptions, toSession, update, view)
+module Page.Settings exposing (Model, Msg, init, subscriptions, toSession, update, view, initPageWidget)
 
-import Api exposing (Cred)
+import Alt exposing (PageWidget, Params, RouteParser)
+import Api exposing (Cred, storageDecoder)
 import Api.Endpoint as Endpoint
 import Avatar
 import Browser.Navigation as Nav
@@ -54,8 +55,17 @@ type Problem
     | ServerError String
 
 
-init : Session -> ( Model, Cmd Msg )
-init session =
+init : Params -> ( Model, Cmd Msg )
+init params =
+    let
+        maybeViewer =
+            Decode.decodeValue Decode.string params.flags
+                |> Result.andThen (Decode.decodeString (storageDecoder Viewer.decoder))
+                |> Result.toMaybe
+
+        session =
+            Session.fromViewer params.key maybeViewer
+    in
     ( { session = session
       , problems = []
       , status = Loading
@@ -94,39 +104,36 @@ type ValidForm
 -- VIEW
 
 
-view : Model -> { title : String, content : Html Msg }
+view : Model -> Html Msg
 view model =
-    { title = "Settings"
-    , content =
-        case Session.cred model.session of
-            Just cred ->
-                div [ class "settings-page" ]
-                    [ div [ class "container page" ]
-                        [ div [ class "row" ]
-                            [ div [ class "col-md-6 offset-md-3 col-xs-12" ] <|
-                                [ h1 [ class "text-xs-center" ] [ text "Your Settings" ]
-                                , ul [ class "error-messages" ]
-                                    (List.map viewProblem model.problems)
-                                , case model.status of
-                                    Loaded form ->
-                                        viewForm cred form
+    case Session.cred model.session of
+        Just cred ->
+            div [ class "settings-page" ]
+                [ div [ class "container page" ]
+                    [ div [ class "row" ]
+                        [ div [ class "col-md-6 offset-md-3 col-xs-12" ] <|
+                            [ h1 [ class "text-xs-center" ] [ text "Your Settings" ]
+                            , ul [ class "error-messages" ]
+                                (List.map viewProblem model.problems)
+                            , case model.status of
+                                Loaded form ->
+                                    viewForm cred form
 
-                                    Loading ->
-                                        text ""
+                                Loading ->
+                                    text ""
 
-                                    LoadingSlowly ->
-                                        Loading.icon
+                                LoadingSlowly ->
+                                    Loading.icon
 
-                                    Failed ->
-                                        text "Error loading page."
-                                ]
+                                Failed ->
+                                    text "Error loading page."
                             ]
                         ]
                     ]
+                ]
 
-            Nothing ->
-                text "Sign in to view your settings."
-    }
+        Nothing ->
+            text "Sign in to view your settings."
 
 
 viewForm : Cred -> Form -> Html Msg
@@ -459,3 +466,12 @@ nothingIfEmpty str =
 
     else
         Just str
+
+
+initPageWidget : RouteParser -> PageWidget Model Msg Params
+initPageWidget p =
+    { init = ( init, p )
+    , update = update
+    , view = view
+    , subscriptions = subscriptions
+    }

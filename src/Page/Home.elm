@@ -1,9 +1,10 @@
-module Page.Home exposing (Model, Msg, init, subscriptions, toSession, update, view)
+module Page.Home exposing (initPageWidget, parser)
 
 {-| The homepage. You can get here via either the / or /#/ routes.
 -}
 
-import Api exposing (Cred)
+import Alt exposing (PageWidget, Params, RouteParser)
+import Api exposing (Cred, storageDecoder)
 import Api.Endpoint as Endpoint
 import Article exposing (Article, Preview)
 import Article.Feed as Feed
@@ -13,6 +14,7 @@ import Html exposing (..)
 import Html.Attributes exposing (attribute, class, classList, href, id, placeholder)
 import Html.Events exposing (onClick)
 import Http
+import Json.Decode as Decode
 import Loading
 import Log
 import Page
@@ -21,11 +23,18 @@ import Session exposing (Session)
 import Task exposing (Task)
 import Time
 import Url.Builder
+import Url.Parser as Parser exposing ((</>), Parser, oneOf, s, string)
 import Username exposing (Username)
+import Viewer
 
 
 
 -- MODEL
+
+
+parser : Parser (List String -> List String) (List String)
+parser =
+    Parser.map [] Parser.top
 
 
 type alias Model =
@@ -53,9 +62,17 @@ type FeedTab
     | TagFeed Tag
 
 
-init : Session -> ( Model, Cmd Msg )
-init session =
+init : Params -> ( Model, Cmd Msg )
+init params =
     let
+        maybeViewer =
+            Decode.decodeValue Decode.string params.flags
+                |> Result.andThen (Decode.decodeString (storageDecoder Viewer.decoder))
+                |> Result.toMaybe
+
+        session =
+            Session.fromViewer params.key maybeViewer
+
         feedTab =
             case Session.cred session of
                 Just cred ->
@@ -89,58 +106,55 @@ init session =
 -- VIEW
 
 
-view : Model -> { title : String, content : Html Msg }
+view : Model -> Html Msg
 view model =
-    { title = "Conduit"
-    , content =
-        div [ class "home-page" ]
-            [ viewBanner
-            , div [ class "container page" ]
-                [ div [ class "row" ]
-                    [ div [ class "col-md-9" ] <|
-                        case model.feed of
-                            Loaded feed ->
-                                [ div [ class "feed-toggle" ] <|
-                                    List.concat
-                                        [ [ viewTabs
-                                                (Session.cred model.session)
-                                                model.feedTab
-                                          ]
-                                        , Feed.viewArticles model.timeZone feed
-                                            |> List.map (Html.map GotFeedMsg)
-                                        , [ Feed.viewPagination ClickedFeedPage model.feedPage feed ]
-                                        ]
-                                ]
-
-                            Loading ->
-                                []
-
-                            LoadingSlowly ->
-                                [ Loading.icon ]
-
-                            Failed ->
-                                [ Loading.error "feed" ]
-                    , div [ class "col-md-3" ] <|
-                        case model.tags of
-                            Loaded tags ->
-                                [ div [ class "sidebar" ] <|
-                                    [ p [] [ text "Popular Tags" ]
-                                    , viewTags tags
+    div [ class "home-page" ]
+        [ viewBanner
+        , div [ class "container page" ]
+            [ div [ class "row" ]
+                [ div [ class "col-md-9" ] <|
+                    case model.feed of
+                        Loaded feed ->
+                            [ div [ class "feed-toggle" ] <|
+                                List.concat
+                                    [ [ viewTabs
+                                            (Session.cred model.session)
+                                            model.feedTab
+                                      ]
+                                    , Feed.viewArticles model.timeZone feed
+                                        |> List.map (Html.map GotFeedMsg)
+                                    , [ Feed.viewPagination ClickedFeedPage model.feedPage feed ]
                                     ]
+                            ]
+
+                        Loading ->
+                            []
+
+                        LoadingSlowly ->
+                            [ Loading.icon ]
+
+                        Failed ->
+                            [ Loading.error "feed" ]
+                , div [ class "col-md-3" ] <|
+                    case model.tags of
+                        Loaded tags ->
+                            [ div [ class "sidebar" ] <|
+                                [ p [] [ text "Popular Tags" ]
+                                , viewTags tags
                                 ]
+                            ]
 
-                            Loading ->
-                                []
+                        Loading ->
+                            []
 
-                            LoadingSlowly ->
-                                [ Loading.icon ]
+                        LoadingSlowly ->
+                            [ Loading.icon ]
 
-                            Failed ->
-                                [ Loading.error "tags" ]
-                    ]
+                        Failed ->
+                            [ Loading.error "tags" ]
                 ]
             ]
-    }
+        ]
 
 
 viewBanner : Html msg
@@ -393,3 +407,12 @@ subscriptions model =
 toSession : Model -> Session
 toSession model =
     model.session
+
+
+initPageWidget : RouteParser -> PageWidget Model Msg Params
+initPageWidget p =
+    { init = ( init, p )
+    , update = update
+    , view = view
+    , subscriptions = subscriptions
+    }

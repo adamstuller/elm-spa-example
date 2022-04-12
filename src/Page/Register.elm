@@ -1,6 +1,7 @@
-module Page.Register exposing (Model, Msg, init, subscriptions, toSession, update, view)
+module Page.Register exposing (Model, Msg, init, subscriptions, toSession, update, view, initPageWidget)
 
-import Api exposing (Cred)
+import Alt exposing (PageWidget, Params, RouteParser)
+import Api exposing (Cred, storageDecoder)
 import Browser.Navigation as Nav
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -37,8 +38,17 @@ type Problem
     | ServerError String
 
 
-init : Session -> ( Model, Cmd msg )
-init session =
+init : Params -> ( Model, Cmd msg )
+init params =
+    let
+        maybeViewer =
+            Decode.decodeValue Decode.string params.flags
+                |> Result.andThen (Decode.decodeString (storageDecoder Viewer.decoder))
+                |> Result.toMaybe
+
+        session =
+            Session.fromViewer params.key maybeViewer
+    in
     ( { session = session
       , problems = []
       , form =
@@ -55,27 +65,24 @@ init session =
 -- VIEW
 
 
-view : Model -> { title : String, content : Html Msg }
+view : Model -> Html Msg
 view model =
-    { title = "Register"
-    , content =
-        div [ class "cred-page" ]
-            [ div [ class "container page" ]
-                [ div [ class "row" ]
-                    [ div [ class "col-md-6 offset-md-3 col-xs-12" ]
-                        [ h1 [ class "text-xs-center" ] [ text "Sign up" ]
-                        , p [ class "text-xs-center" ]
-                            [ a [ Route.href Route.Login ]
-                                [ text "Have an account?" ]
-                            ]
-                        , ul [ class "error-messages" ]
-                            (List.map viewProblem model.problems)
-                        , viewForm model.form
+    div [ class "cred-page" ]
+        [ div [ class "container page" ]
+            [ div [ class "row" ]
+                [ div [ class "col-md-6 offset-md-3 col-xs-12" ]
+                    [ h1 [ class "text-xs-center" ] [ text "Sign up" ]
+                    , p [ class "text-xs-center" ]
+                        [ a [ Route.href Route.Login ]
+                            [ text "Have an account?" ]
                         ]
+                    , ul [ class "error-messages" ]
+                        (List.map viewProblem model.problems)
+                    , viewForm model.form
                     ]
                 ]
             ]
-    }
+        ]
 
 
 viewForm : Form -> Html Msg
@@ -315,3 +322,12 @@ register (Trimmed form) =
                 |> Http.jsonBody
     in
     Api.register body Viewer.decoder
+
+
+initPageWidget : RouteParser -> PageWidget Model Msg Params
+initPageWidget p =
+    { init = ( init, p )
+    , update = update
+    , view = view
+    , subscriptions = subscriptions
+    }

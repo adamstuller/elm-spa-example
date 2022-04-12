@@ -1,9 +1,10 @@
-module Page.Profile exposing (Model, Msg, init, subscriptions, toSession, update, view)
+module Page.Profile exposing (Model, Msg, init, subscriptions, toSession, update, view, initPageWidget, parser)
 
 {-| An Author's profile.
 -}
 
-import Api exposing (Cred)
+import Alt exposing (PageWidget, Params, RouteParser)
+import Api exposing (Cred, storageDecoder)
 import Api.Endpoint as Endpoint
 import Article exposing (Article, Preview)
 import Article.Feed as Feed
@@ -12,6 +13,8 @@ import Avatar exposing (Avatar)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Http
+import Json.Decode as Decode
+import List exposing (singleton)
 import Loading
 import Log
 import Page
@@ -22,8 +25,23 @@ import Session exposing (Session)
 import Task exposing (Task)
 import Time
 import Url.Builder
+import Url.Parser exposing ((</>), Parser, string)
 import Username exposing (Username)
 import Viewer exposing (Viewer)
+
+
+
+-- Parser
+
+
+parser : Parser (List String -> List String) (List String)
+parser =
+    Url.Parser.map singleton (Url.Parser.s "article" </> string)
+
+
+urlParamsToUsername : List String -> Username
+urlParamsToUsername params =
+    Username.Username <| Maybe.withDefault "DEFAULT_SLUG" (List.head params)
 
 
 
@@ -55,11 +73,22 @@ type Status a
     | Failed Username
 
 
-init : Session -> Username -> ( Model, Cmd Msg )
-init session username =
+init : Params -> ( Model, Cmd Msg )
+init params =
     let
+        maybeViewer =
+            Decode.decodeValue Decode.string params.flags
+                |> Result.andThen (Decode.decodeString (storageDecoder Viewer.decoder))
+                |> Result.toMaybe
+
+        session =
+            Session.fromViewer params.key maybeViewer
+
         maybeCred =
             Session.cred session
+
+        username =
+            urlParamsToUsername <| params.urlParams
     in
     ( { session = session
       , timeZone = Time.utc
@@ -142,107 +171,83 @@ articlesPerPage =
 -- VIEW
 
 
-view : Model -> { title : String, content : Html Msg }
+view : Model -> Html Msg
 view model =
-    let
-        title =
-            case model.author of
-                Loaded (IsViewer _ _) ->
-                    myProfileTitle
+    case model.author of
+        Loaded author ->
+            let
+                profile =
+                    Author.profile author
 
-                Loaded ((IsFollowing followedAuthor) as author) ->
-                    titleForOther (Author.username author)
+                username =
+                    Author.username author
 
-                Loaded ((IsNotFollowing unfollowedAuthor) as author) ->
-                    titleForOther (Author.username author)
+                followButton =
+                    case Session.cred model.session of
+                        Just cred ->
+                            case author of
+                                IsViewer _ _ ->
+                                    -- We can't follow ourselves!
+                                    text ""
 
-                Loading username ->
-                    titleForMe (Session.cred model.session) username
+                                IsFollowing followedAuthor ->
+                                    Author.unfollowButton ClickedUnfollow cred followedAuthor
 
-                LoadingSlowly username ->
-                    titleForMe (Session.cred model.session) username
+                                IsNotFollowing unfollowedAuthor ->
+                                    Author.followButton ClickedFollow cred unfollowedAuthor
 
-                Failed username ->
-                    titleForMe (Session.cred model.session) username
-    in
-    { title = title
-    , content =
-        case model.author of
-            Loaded author ->
-                let
-                    profile =
-                        Author.profile author
-
-                    username =
-                        Author.username author
-
-                    followButton =
-                        case Session.cred model.session of
-                            Just cred ->
-                                case author of
-                                    IsViewer _ _ ->
-                                        -- We can't follow ourselves!
-                                        text ""
-
-                                    IsFollowing followedAuthor ->
-                                        Author.unfollowButton ClickedUnfollow cred followedAuthor
-
-                                    IsNotFollowing unfollowedAuthor ->
-                                        Author.followButton ClickedFollow cred unfollowedAuthor
-
-                            Nothing ->
-                                -- We can't follow if we're logged out
-                                text ""
-                in
-                div [ class "profile-page" ]
-                    [ Page.viewErrors ClickedDismissErrors model.errors
-                    , div [ class "user-info" ]
-                        [ div [ class "container" ]
-                            [ div [ class "row" ]
-                                [ div [ class "col-xs-12 col-md-10 offset-md-1" ]
-                                    [ img [ class "user-img", Avatar.src (Profile.avatar profile) ] []
-                                    , h4 [] [ Username.toHtml username ]
-                                    , p [] [ text (Maybe.withDefault "" (Profile.bio profile)) ]
-                                    , followButton
-                                    ]
+                        Nothing ->
+                            -- We can't follow if we're logged out
+                            text ""
+            in
+            div [ class "profile-page" ]
+                [ Page.viewErrors ClickedDismissErrors model.errors
+                , div [ class "user-info" ]
+                    [ div [ class "container" ]
+                        [ div [ class "row" ]
+                            [ div [ class "col-xs-12 col-md-10 offset-md-1" ]
+                                [ img [ class "user-img", Avatar.src (Profile.avatar profile) ] []
+                                , h4 [] [ Username.toHtml username ]
+                                , p [] [ text (Maybe.withDefault "" (Profile.bio profile)) ]
+                                , followButton
                                 ]
                             ]
                         ]
-                    , case model.feed of
-                        Loaded feed ->
-                            div [ class "container" ]
-                                [ div [ class "row" ]
-                                    [ div [ class "col-xs-12 col-md-10 offset-md-1" ]
-                                        [ div [ class "articles-toggle" ] <|
-                                            List.concat
-                                                [ [ viewTabs model.feedTab ]
-                                                , Feed.viewArticles model.timeZone feed
-                                                    |> List.map (Html.map GotFeedMsg)
-                                                , [ Feed.viewPagination ClickedFeedPage model.feedPage feed ]
-                                                ]
-                                        ]
+                    ]
+                , case model.feed of
+                    Loaded feed ->
+                        div [ class "container" ]
+                            [ div [ class "row" ]
+                                [ div [ class "col-xs-12 col-md-10 offset-md-1" ]
+                                    [ div [ class "articles-toggle" ] <|
+                                        List.concat
+                                            [ [ viewTabs model.feedTab ]
+                                            , Feed.viewArticles model.timeZone feed
+                                                |> List.map (Html.map GotFeedMsg)
+                                            , [ Feed.viewPagination ClickedFeedPage model.feedPage feed ]
+                                            ]
                                     ]
                                 ]
+                            ]
 
-                        Loading _ ->
-                            text ""
+                    Loading _ ->
+                        text ""
 
-                        LoadingSlowly _ ->
-                            Loading.icon
+                    LoadingSlowly _ ->
+                        Loading.icon
 
-                        Failed _ ->
-                            Loading.error "feed"
-                    ]
+                    Failed _ ->
+                        Loading.error "feed"
+                ]
 
-            Loading _ ->
-                text ""
+        Loading _ ->
+            text ""
 
-            LoadingSlowly _ ->
-                Loading.icon
+        LoadingSlowly _ ->
+            Loading.icon
 
-            Failed _ ->
-                Loading.error "profile"
-    }
+        Failed _ ->
+            Loading.error "profile"
 
 
 
@@ -436,3 +441,12 @@ subscriptions model =
 toSession : Model -> Session
 toSession model =
     model.session
+
+
+initPageWidget : RouteParser -> PageWidget Model Msg Params
+initPageWidget p =
+    { init = ( init, p )
+    , update = update
+    , view = view
+    , subscriptions = subscriptions
+    }
