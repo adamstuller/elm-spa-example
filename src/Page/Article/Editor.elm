@@ -1,6 +1,7 @@
-module Page.Article.Editor exposing (Model, Msg, initEdit, initNew, subscriptions, toSession, update, view)
+module Page.Article.Editor exposing (Model, Msg, initEdit, initNew, initPageWidgetEdit, initPageWidgetNew, parserEdit, parserNew, subscriptions, toSession, update, view)
 
-import Api exposing (Cred)
+import Alt exposing (PageWidget, Params, RouteParser)
+import Api exposing (Cred, storageDecoder)
 import Api.Endpoint as Endpoint
 import Article exposing (Article, Full)
 import Article.Body exposing (Body)
@@ -12,6 +13,7 @@ import Html.Events exposing (onInput, onSubmit)
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
+import List exposing (singleton)
 import Loading
 import Page
 import Profile exposing (Profile)
@@ -19,6 +21,23 @@ import Route
 import Session exposing (Session)
 import Task exposing (Task)
 import Time
+import Url.Parser exposing ((</>), Parser, string)
+import Viewer
+
+
+urlParamsToSlug : List String -> Slug
+urlParamsToSlug params =
+    Slug.Slug <| Maybe.withDefault "DEFAULT_SLUG" (List.head params)
+
+
+parserEdit : Parser (List String -> List String) (List String)
+parserEdit =
+    Url.Parser.map singleton (Url.Parser.s "editor" </> string)
+
+
+parserNew : Parser (List String -> List String) (List String)
+parserNew =
+    Url.Parser.map [] (Url.Parser.s "editor")
 
 
 
@@ -57,8 +76,17 @@ type alias Form =
     }
 
 
-initNew : Session -> ( Model, Cmd msg )
-initNew session =
+initNew : Params -> ( Model, Cmd msg )
+initNew params =
+    let
+        maybeViewer =
+            Decode.decodeValue Decode.string params.flags
+                |> Result.andThen (Decode.decodeString (storageDecoder Viewer.decoder))
+                |> Result.toMaybe
+
+        session =
+            Session.fromViewer params.key maybeViewer
+    in
     ( { session = session
       , status =
             EditingNew []
@@ -72,8 +100,20 @@ initNew session =
     )
 
 
-initEdit : Session -> Slug -> ( Model, Cmd Msg )
-initEdit session slug =
+initEdit : Params -> ( Model, Cmd Msg )
+initEdit params =
+    let
+        maybeViewer =
+            Decode.decodeValue Decode.string params.flags
+                |> Result.andThen (Decode.decodeString (storageDecoder Viewer.decoder))
+                |> Result.toMaybe
+
+        session =
+            Session.fromViewer params.key maybeViewer
+
+        slug =
+            urlParamsToSlug <| params.urlParams
+    in
     ( { session = session
       , status = Loading slug
       }
@@ -93,23 +133,14 @@ initEdit session slug =
 -- VIEW
 
 
-view : Model -> { title : String, content : Html Msg }
+view : Model -> Html Msg
 view model =
-    { title =
-        case getSlug model.status of
-            Just slug ->
-                "Edit Article - " ++ Slug.toString slug
+    case Session.cred model.session of
+        Just cred ->
+            viewAuthenticated cred model
 
-            Nothing ->
-                "New Article"
-    , content =
-        case Session.cred model.session of
-            Just cred ->
-                viewAuthenticated cred model
-
-            Nothing ->
-                text "Sign in to edit this article."
-    }
+        Nothing ->
+            text "Sign in to edit this article."
 
 
 viewProblems : List Problem -> Html msg
@@ -598,3 +629,21 @@ getSlug status =
 
         Creating _ ->
             Nothing
+
+
+initPageWidgetNew : RouteParser -> PageWidget Model Msg Params
+initPageWidgetNew p =
+    { init = ( initNew, p )
+    , update = update
+    , view = view
+    , subscriptions = subscriptions
+    }
+
+
+initPageWidgetEdit : RouteParser -> PageWidget Model Msg Params
+initPageWidgetEdit p =
+    { init = ( initEdit, p )
+    , update = update
+    , view = view
+    , subscriptions = subscriptions
+    }

@@ -253,6 +253,8 @@ main =
         |> flip add (Home.initPageWidget Home.parser)
         |> flip add (Profile.initPageWidget Profile.parser)
         |> flip add (Article.initPageWidget Article.parser)
+        |> flip add (Editor.initPageWidgetNew Editor.parserNew)
+        |> flip add (Editor.initPageWidgetEdit Editor.parserEdit)
         |> initRouter title Page.viewNavbar
         |> Browser.application
 
