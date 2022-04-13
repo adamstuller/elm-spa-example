@@ -1,4 +1,4 @@
-module Page.NotFound exposing (view)
+module Page.NotFound exposing (view, initPageWidget)
 
 import Alt exposing (PageWidget, Params, RouteParser)
 import Asset
