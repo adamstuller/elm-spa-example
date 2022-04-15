@@ -1,6 +1,6 @@
 module Page exposing (Page(..), view, viewErrors, viewNavbar)
 
-import Alt exposing (Navbar)
+import Alt exposing (Header)
 import Api exposing (Cred)
 import Avatar
 import Browser exposing (Document)
@@ -91,7 +91,7 @@ viewMenu page maybeViewer =
             ]
 
 
-viewNavbar : Navbar msg
+viewNavbar : Header msg
 viewNavbar state onNavbarExpandClicked url =
     let
         link route linkContent =

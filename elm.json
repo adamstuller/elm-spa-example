@@ -1,13 +1,13 @@
 {
     "type": "application",
     "source-directories": [
-        "src",
-        "alt"
+        "src"
     ],
     "elm-version": "0.19.1",
     "dependencies": {
         "direct": {
             "NoRedInk/elm-json-decode-pipeline": "1.0.0",
+            "adamstuller/elm-spa-composition": "1.0.0",
             "elm/browser": "1.0.0",
             "elm/core": "1.0.0",
             "elm/html": "1.0.0",

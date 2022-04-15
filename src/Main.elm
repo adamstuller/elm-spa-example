@@ -1,6 +1,6 @@
 module Main exposing (main)
 
-import Alt exposing (add, basicParser, emptyNavbar, initRouter, join)
+import Alt exposing (add, basicParser, emptyFooter, initRouter, join)
 import Api exposing (Cred)
 import Article.Slug exposing (Slug)
 import Avatar exposing (Avatar)
@@ -40,5 +40,5 @@ main =
         |> flip add (Article.initPageWidget Article.parser)
         |> flip add (Editor.initPageWidgetNew Editor.parserNew)
         |> flip add (Editor.initPageWidgetEdit Editor.parserEdit)
-        |> initRouter title Page.viewNavbar
+        |> initRouter title Page.viewNavbar emptyFooter
         |> Browser.application
